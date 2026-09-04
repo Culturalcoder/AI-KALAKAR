@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="terracotta_primary">#C4622D</color>
+    <color name="terracotta_dark">#9C4719</color>
+    <color name="indigo_deep">#2C3E66</color>
+    <color name="turmeric_gold">#E8A33D</color>
+    <color name="natural_linen">#F7F3EC</color>
+    <color name="charcoal_text">#2A2622</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+</resources>

@@ -1,0 +1,6 @@
+{
+  "name": "AI कलाकार",
+  "description": "Virtual business manager for artisans, weavers, and micro-entrepreneurs to digitize, list, and price handmade products.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
