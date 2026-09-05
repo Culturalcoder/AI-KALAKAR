@@ -904,6 +904,7 @@ private data class ParticleData(
 @Composable
 private fun LoomBackgroundVideoView(modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val isRunningOnEmulator = remember { isEmulatorDevice() }
     val videoUri = remember {
         Uri.parse("android.resource://${context.packageName}/${R.raw.loom_video}")
     }
@@ -917,29 +918,31 @@ private fun LoomBackgroundVideoView(modifier: Modifier = Modifier) {
             contentScale = ContentScale.Crop
         )
 
-        // Native looping background video player
-        AndroidView(
-            factory = { ctx ->
-                VideoView(ctx).apply {
-                    setVideoURI(videoUri)
-                    setOnPreparedListener { mp ->
-                        mp.isLooping = true
-                        mp.setVolume(0f, 0f)
-                        try {
-                            mp.setVideoScalingMode(android.media.MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING)
-                        } catch (_: Exception) {}
-                        start()
+        // Native looping background video player for real devices (bypasses emulator GPU decoder warnings)
+        if (!isRunningOnEmulator) {
+            AndroidView(
+                factory = { ctx ->
+                    VideoView(ctx).apply {
+                        setVideoURI(videoUri)
+                        setOnPreparedListener { mp ->
+                            mp.isLooping = true
+                            mp.setVolume(0f, 0f)
+                            try {
+                                mp.setVideoScalingMode(android.media.MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING)
+                            } catch (_: Exception) {}
+                            start()
+                        }
+                        setOnErrorListener { _, _, _ -> true }
                     }
-                    setOnErrorListener { _, _, _ -> true }
-                }
-            },
-            update = { view ->
-                if (!view.isPlaying) {
-                    view.start()
-                }
-            },
-            modifier = Modifier.fillMaxSize()
-        )
+                },
+                update = { view ->
+                    if (!view.isPlaying) {
+                        view.start()
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
 
         // Cinematic dark gradient scrim for contrast & legibility
         Box(
@@ -957,3 +960,16 @@ private fun LoomBackgroundVideoView(modifier: Modifier = Modifier) {
         )
     }
 }
+
+private fun isEmulatorDevice(): Boolean {
+    return (android.os.Build.FINGERPRINT.startsWith("generic")
+            || android.os.Build.FINGERPRINT.startsWith("unknown")
+            || android.os.Build.MODEL.contains("google_sdk")
+            || android.os.Build.MODEL.contains("Emulator")
+            || android.os.Build.MODEL.contains("Android SDK built for x86")
+            || android.os.Build.BOARD == "QC_Reference_Phone"
+            || android.os.Build.HARDWARE.contains("goldfish")
+            || android.os.Build.HARDWARE.contains("ranchu")
+            || android.os.Build.MANUFACTURER.contains("Genymotion"))
+}
+
