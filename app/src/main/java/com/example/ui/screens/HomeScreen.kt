@@ -335,7 +335,7 @@ fun HomeScreen(
                             Text(
                                 text = "AI ",
                                 style = MaterialTheme.typography.displayMedium.copy(
-                                    fontSize = 48.sp,
+                                    fontSize = 50.sp,
                                     fontFamily = FontFamily.Serif,
                                     fontWeight = FontWeight.Black,
                                     letterSpacing = 1.5.sp,
@@ -346,7 +346,7 @@ fun HomeScreen(
                             Text(
                                 text = "कलाकार",
                                 style = MaterialTheme.typography.displayMedium.copy(
-                                    fontSize = 48.sp,
+                                    fontSize = 50.sp,
                                     fontFamily = FontFamily.Serif,
                                     fontWeight = FontWeight.Black,
                                     letterSpacing = 1.5.sp,
@@ -356,6 +356,29 @@ fun HomeScreen(
                             )
                         }
                     }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Supporting Text: “For every artisan, weaver & craft maker.” (Soft fade-in transition)
+                this@Column.AnimatedVisibility(
+                    visible = isSupportingTextVisible,
+                    enter = fadeIn(animationSpec = tween(700)) +
+                            slideInVertically(
+                                initialOffsetY = { 20 },
+                                animationSpec = spring(dampingRatio = 0.8f, stiffness = 300f)
+                            )
+                ) {
+                    Text(
+                        text = "For every artisan, weaver & craft maker.",
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium,
+                            letterSpacing = 0.5.sp,
+                            color = Color(0xFFEADCC9)
+                        ),
+                        textAlign = TextAlign.Center
+                    )
                 }
             }
 
@@ -721,7 +744,7 @@ private fun TaglineWord(
                 )
     ) {
         Text(
-            text = " ",
+            text = "$word ",
             style = MaterialTheme.typography.headlineMedium.copy(
                 fontSize = 23.sp,
                 fontFamily = FontFamily.Serif,
