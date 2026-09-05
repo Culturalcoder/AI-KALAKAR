@@ -10,13 +10,15 @@ import com.example.data.image.ImageStudioProcessor
 import com.example.data.local.ArtisanDatabase
 import com.example.data.model.ArtisanProfileEntity
 import com.example.data.model.ProductEntity
+import com.example.data.supabase.SupabaseService
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
 
 class ArtisanRepository(
     private val context: Context,
     private val database: ArtisanDatabase = ArtisanDatabase.getInstance(context),
-    private val geminiService: GeminiService = GeminiService()
+    private val geminiService: GeminiService = GeminiService(),
+    private val supabaseService: SupabaseService = SupabaseService()
 ) {
     private val productDao = database.productDao()
     private val profileDao = database.artisanProfileDao()
@@ -39,6 +41,18 @@ class ArtisanRepository(
     suspend fun updatePreferredLanguage(lang: String) = profileDao.updateLanguage(lang)
 
     suspend fun setWalkthroughCompleted(completed: Boolean) = profileDao.updateWalkthrough(completed)
+
+    suspend fun syncProductToCloud(product: ProductEntity): Result<String> {
+        val result = supabaseService.syncProductToSupabase(product)
+        if (result.isSuccess) {
+            try {
+                productDao.updateProduct(product.copy(syncStatus = "SYNCED"))
+            } catch (e: Exception) {
+                // local update failure is non-fatal
+            }
+        }
+        return result
+    }
 
     suspend fun analyzeProductImage(bitmap: Bitmap): ImageAnalysisResult {
         return geminiService.analyzeProductImage(bitmap)
@@ -66,7 +80,6 @@ class ArtisanRepository(
     suspend fun seedSampleDataIfEmpty() {
         val count = totalProductCount.firstOrNull() ?: 0
         if (count == 0) {
-            // Seed profile
             profileDao.insertOrUpdateProfile(
                 ArtisanProfileEntity(
                     id = 1,
@@ -81,7 +94,6 @@ class ArtisanRepository(
                 )
             )
 
-            // Seed 2 realistic craft products
             val sampleBitmap = ImageStudioProcessor.createSampleArtisanBitmap()
             val sampleRawUri = ImageStudioProcessor.saveBitmapToInternalStorage(context, sampleBitmap, "sample_raw")
             val sampleEnhanced = ImageStudioProcessor.enhanceToStudioQuality(context, sampleBitmap)
