@@ -1,13 +1,14 @@
 package com.example.ui.screens
-
+import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
 import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -42,6 +43,8 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PublishedWithChanges
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -61,11 +64,14 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -87,13 +93,18 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import com.example.data.image.ImageStudioProcessor
+import com.example.data.image.StudioBackdrop
 import com.example.ui.components.BeforeAfterComparisonSlider
 import com.example.ui.components.VoiceRecordingButton
 import com.example.ui.theme.CharcoalMuted
 import com.example.ui.theme.CharcoalText
 import com.example.ui.theme.CraftBorder
+import com.example.ui.theme.CraftRed
+import com.example.ui.theme.CraftRedContainer
 import com.example.ui.theme.CraftGreen
 import com.example.ui.theme.CraftGreenContainer
 import com.example.ui.theme.DeepIndigo
@@ -107,7 +118,9 @@ import com.example.ui.theme.TurmericContainer
 import com.example.ui.theme.TurmericGold
 import com.example.ui.viewmodel.ArtisanViewModel
 import com.example.ui.viewmodel.WizardStep
+import java.io.File
 import kotlinx.coroutines.launch
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -124,6 +137,45 @@ fun WizardScreen(
 
     val wizardState by viewModel.wizardState.collectAsState()
     val currentStep = wizardState.currentStep
+
+    // Temp Uri for high-resolution Camera capture
+    var cameraTempUri by remember { mutableStateOf<Uri?>(null) }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success && cameraTempUri != null) {
+            coroutineScope.launch {
+                val bitmap = ImageStudioProcessor.loadBitmapFromUri(context, cameraTempUri!!)
+                if (bitmap != null) {
+                    viewModel.onImageSelected(bitmap)
+                }
+            }
+        }
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            val photoFile = File(context.cacheDir, "captured_craft_${System.currentTimeMillis()}.jpg")
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", photoFile)
+            cameraTempUri = uri
+            cameraLauncher.launch(uri)
+        }
+    }
+
+    fun launchCamera() {
+        val hasPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        if (hasPermission) {
+            val photoFile = File(context.cacheDir, "captured_craft_${System.currentTimeMillis()}.jpg")
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", photoFile)
+            cameraTempUri = uri
+            cameraLauncher.launch(uri)
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
 
     // Android Photo Picker launcher (zero storage permission, Google Play compliant)
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -152,6 +204,65 @@ fun WizardScreen(
                 viewModel.updateArtisanSpokenNotes(newText)
             }
         }
+    }
+
+    // Rejection / Verification Dialog for product capture
+    if (wizardState.productRejectionMessage != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissRejectionDialog() },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = TurmericGold,
+                    modifier = Modifier.size(36.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = if (isHindi) "क्षमा करें! (हस्तशिल्प पुष्टि)" else "Sorry! Verify Craft Item",
+                    fontWeight = FontWeight.Bold,
+                    color = DeepIndigo
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = wizardState.productRejectionMessage ?: "",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = CharcoalText
+                    )
+                    Text(
+                        text = if (isHindi) 
+                            "यदि यह आपकी असली हस्तशिल्प कलाकृति है, तो आप 'जारी रखें' दबा सकते हैं या बेहतर रोशनी में दूसरी तस्वीर ले सकते हैं।"
+                            else "If this is your genuine handmade craft, you can tap 'Continue Anyway' or take another photo with better lighting.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = CharcoalMuted
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.continueAnywayWithImage() },
+                    colors = ButtonDefaults.buttonColors(containerColor = CraftGreen)
+                ) {
+                    Text(if (isHindi) "यह हस्तशिल्प है, आगे बढ़ें" else "Continue Anyway")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { viewModel.dismissRejectionDialog() },
+                    border = BorderStroke(1.dp, CraftBorder)
+                ) {
+                    Text(
+                        text = if (isHindi) "पुनः फोटो लें" else "Take Another Photo",
+                        color = CharcoalText
+                    )
+                }
+            },
+            containerColor = LinenCard,
+            shape = RoundedCornerShape(16.dp)
+        )
     }
 
     Scaffold(
@@ -274,6 +385,7 @@ fun WizardScreen(
                         PhotoStudioStepView(
                             wizardState = wizardState,
                             isHindi = isHindi,
+                            onCaptureCamera = { launchCamera() },
                             onPickPhoto = {
                                 photoPickerLauncher.launch(
                                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
@@ -281,6 +393,9 @@ fun WizardScreen(
                             },
                             onLoadSample = { viewModel.loadSampleArtisanPhoto() },
                             onSliderChange = { viewModel.setSliderPosition(it) },
+                            onBackdropChange = { viewModel.setBackdrop(it) },
+                            onToggleBackgroundRemoval = { viewModel.toggleBackgroundRemoval(it) },
+                            onSensitivityChange = { viewModel.setRemovalSensitivity(it) },
                             onNext = { viewModel.setWizardStep(WizardStep.CATALOG_STORY) }
                         )
                     }
@@ -361,11 +476,17 @@ fun WizardScreen(
 fun PhotoStudioStepView(
     wizardState: com.example.ui.viewmodel.WizardState,
     isHindi: Boolean,
+    onCaptureCamera: () -> Unit,
     onPickPhoto: () -> Unit,
     onLoadSample: () -> Unit,
     onSliderChange: (Float) -> Unit,
+    onBackdropChange: (StudioBackdrop) -> Unit,
+    onToggleBackgroundRemoval: (Boolean) -> Unit,
+    onSensitivityChange: (Float) -> Unit,
     onNext: () -> Unit
 ) {
+    var showSensitivityControls by remember { mutableStateOf(false) }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -381,8 +502,8 @@ fun PhotoStudioStepView(
                     )
                 )
                 Text(
-                    text = if (isHindi) "AI स्टूडियो अपने आप बैकग्राउंड सुधार, लाइटिंग और किनारों को निखारता है।"
-                    else "AI Studio automatically corrects lighting, contrast, and craft edges.",
+                    text = if (isHindi) "AI बैकग्राउंड रिमूवर अपने आप फर्श/वर्कशॉप का बैकग्राउंड हटाकर ई-कॉमर्स स्टूडियो फिनिश देता है।"
+                    else "AI Background Remover automatically eliminates floor/clutter and creates a studio catalog shot.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = CharcoalMuted
                 )
@@ -400,56 +521,261 @@ fun PhotoStudioStepView(
             )
         }
 
-        // Action Buttons: Camera/Gallery & Sample
+        // Action Buttons: Camera, Gallery & Sample
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // Real Camera Capture Button
                 Button(
+                    onClick = onCaptureCamera,
+                    modifier = Modifier
+                        .weight(1.1f)
+                        .height(50.dp)
+                        .testTag("capture_camera_button"),
+                    colors = ButtonDefaults.buttonColors(containerColor = TerracottaPrimary),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PhotoCamera,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = if (isHindi) "कैमरा (फोटो लें)" else "Take Photo",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
+                }
+
+                // Gallery Picker Button
+                OutlinedButton(
                     onClick = onPickPhoto,
                     modifier = Modifier
                         .weight(1f)
                         .height(50.dp)
                         .testTag("pick_photo_button"),
-                    colors = ButtonDefaults.buttonColors(containerColor = TerracottaPrimary),
+                    border = BorderStroke(1.dp, DeepIndigo),
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Collections,
                         contentDescription = null,
+                        tint = DeepIndigo,
                         modifier = Modifier.size(18.dp)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = if (isHindi) "गैलरी से चुनें" else "Choose Photo",
+                        text = if (isHindi) "गैलरी" else "Gallery",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
+                        color = DeepIndigo,
+                        fontSize = 13.sp
                     )
                 }
 
+                // Sample Craft Button
                 OutlinedButton(
                     onClick = onLoadSample,
                     modifier = Modifier
-                        .weight(1f)
+                        .weight(0.9f)
                         .height(50.dp)
                         .testTag("load_sample_photo_button"),
-                    border = BorderStroke(1.5.dp, DeepIndigo),
+                    border = BorderStroke(1.dp, TurmericGold),
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.AutoAwesome,
                         contentDescription = null,
-                        tint = DeepIndigo,
-                        modifier = Modifier.size(18.dp)
+                        tint = TurmericGold,
+                        modifier = Modifier.size(16.dp)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(2.dp))
                     Text(
-                        text = if (isHindi) "नमूना हस्तशिल्प" else "Sample Craft",
+                        text = if (isHindi) "नमूना" else "Sample",
                         fontWeight = FontWeight.Bold,
-                        color = DeepIndigo,
-                        fontSize = 14.sp
+                        color = CharcoalText,
+                        fontSize = 12.sp
                     )
+                }
+            }
+        }
+
+        // Dedicated Background Removal & Studio Backdrops Card
+        if (wizardState.rawBitmap != null) {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = LinenCard),
+                    border = BorderStroke(1.dp, CraftBorder),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        // Header: Background Removal Toggle Switch
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = TerracottaPrimary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        text = if (isHindi) "AI बैकग्राउंड हटाएं (Remove Background)" else "AI Background Remover",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = DeepIndigo
+                                    )
+                                    Text(
+                                        text = if (isHindi) "उत्पाद को अलग कर बैकड्रॉप जोड़ें" else "Isolate craft & apply studio backdrop",
+                                        fontSize = 11.sp,
+                                        color = CharcoalMuted
+                                    )
+                                }
+                            }
+
+                            Switch(
+                                checked = wizardState.isBackgroundRemoved,
+                                onCheckedChange = { onToggleBackgroundRemoval(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = TerracottaPrimary,
+                                    uncheckedThumbColor = CharcoalMuted,
+                                    uncheckedTrackColor = NaturalLinen
+                                ),
+                                modifier = Modifier.testTag("toggle_background_removal_switch")
+                            )
+                        }
+
+                        if (wizardState.isBackgroundRemoved) {
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            Text(
+                                text = if (isHindi) "स्टूडियो बैकड्रॉप चुनें:" else "Select Studio Backdrop:",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 12.sp,
+                                color = CharcoalText
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Horizontal Backdrop selector chips
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                items(StudioBackdrop.values()) { backdrop ->
+                                    val isSelected = wizardState.selectedBackdrop == backdrop
+                                    Surface(
+                                        color = if (isSelected) TerracottaPrimary else NaturalLinen,
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = BorderStroke(
+                                            width = if (isSelected) 1.5.dp else 1.dp,
+                                            color = if (isSelected) TerracottaPrimary else CraftBorder
+                                        ),
+                                        modifier = Modifier
+                                            .clickable { onBackdropChange(backdrop) }
+                                            .testTag("backdrop_chip_${backdrop.id}")
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            // Preview Dot
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(12.dp)
+                                                    .clip(CircleShape)
+                                                    .background(
+                                                        if (backdrop == StudioBackdrop.TRANSPARENT) Color.LightGray
+                                                        else Color(backdrop.colorHex)
+                                                    )
+                                                    .border(1.dp, Color.Gray.copy(alpha = 0.5f), CircleShape)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = if (isHindi) backdrop.titleHi else backdrop.titleEn,
+                                                fontSize = 12.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (isSelected) Color.White else CharcoalText
+                                            )
+                                            if (isSelected) {
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Icon(
+                                                    imageVector = Icons.Default.Check,
+                                                    contentDescription = null,
+                                                    tint = TurmericGold,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Fine Tuning Sensitivity Toggle
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { showSensitivityControls = !showSensitivityControls },
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = if (isHindi) "किनारों की संवेदनशीलता ट्यून करें" else "Fine-tune Edge Sensitivity",
+                                    fontSize = 12.sp,
+                                    color = TerracottaPrimary,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    text = if (showSensitivityControls) "▲" else "▼",
+                                    fontSize = 11.sp,
+                                    color = TerracottaPrimary
+                                )
+                            }
+
+                            if (showSensitivityControls) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Column {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = if (isHindi) "हल्का (Soft)" else "Soft Cutout",
+                                            fontSize = 11.sp,
+                                            color = CharcoalMuted
+                                        )
+                                        Text(
+                                            text = if (isHindi) "सख्त (Sharp)" else "Sharp Cutout",
+                                            fontSize = 11.sp,
+                                            color = CharcoalMuted
+                                        )
+                                    }
+                                    Slider(
+                                        value = wizardState.backgroundRemovalSensitivity,
+                                        onValueChange = { onSensitivityChange(it) },
+                                        valueRange = 0.1f..0.9f,
+                                        colors = SliderDefaults.colors(
+                                            thumbColor = TerracottaPrimary,
+                                            activeTrackColor = TerracottaPrimary,
+                                            inactiveTrackColor = NaturalLinen
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -474,8 +800,8 @@ fun PhotoStudioStepView(
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            text = if (isHindi) "AI स्टूडियो फोटो का विश्लेषण व लाइटिंग सुधार कर रहा है..."
-                            else "AI Studio analyzing image and applying studio lighting...",
+                            text = if (isHindi) "AI स्टूडियो बैकग्राउंड हटाकर लाइटिंग तैयार कर रहा है..."
+                            else "AI Studio removing background and generating studio lighting...",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium,
                             color = CharcoalText
@@ -1147,18 +1473,27 @@ fun FairPricingStepView(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
-                                PricingLineItem(
-                                    label = if (isHindi) "• कच्चा माल (Raw Materials):" else "• Raw Materials:",
-                                    value = "₹${pricing.materialCost}"
-                                )
-                                PricingLineItem(
-                                    label = if (isHindi) "• उचित कारीगर पारिश्रमिक (Fair Wage):" else "• Artisan Fair Labor:",
-                                    value = "₹${pricing.fairLaborCost}"
-                                )
-                                PricingLineItem(
-                                    label = if (isHindi) "• पैकेजिंग व डिलीवरी बफर (Overhead):" else "• Packing & Platform Overhead:",
-                                    value = "₹${pricing.platformMargin}"
-                                )
+                                if (pricing.breakdown.isNotEmpty()) {
+                                    pricing.breakdown.forEach { (categoryLabel, amount) ->
+                                        PricingLineItem(
+                                            label = "• $categoryLabel:",
+                                            value = "₹$amount"
+                                        )
+                                    }
+                                } else {
+                                    PricingLineItem(
+                                        label = if (isHindi) "• न्यूनतम उचित मूल्य (Base):" else "• Minimum Fair Price:",
+                                        value = "₹${pricing.priceMin}"
+                                    )
+                                    PricingLineItem(
+                                        label = if (isHindi) "• अनुशंसित विक्रय मूल्य:" else "• Recommended Price:",
+                                        value = "₹${pricing.suggestedPrice}"
+                                    )
+                                    PricingLineItem(
+                                        label = if (isHindi) "• प्रीमियम बाजार मूल्य:" else "• Premium Market Price:",
+                                        value = "₹${pricing.priceMax}"
+                                    )
+                                }
                             }
                         }
 

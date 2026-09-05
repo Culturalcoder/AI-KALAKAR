@@ -1,6 +1,6 @@
 package com.example.ui.screens
-
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Share
@@ -75,6 +76,7 @@ import com.example.ui.theme.TerracottaContainer
 import com.example.ui.theme.TerracottaPrimary
 import com.example.ui.viewmodel.ArtisanViewModel
 
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProductDetailScreen(
@@ -91,6 +93,7 @@ fun ProductDetailScreen(
     val product = products.find { it.id == productId }
 
     var displayLanguageIsHindi by remember { mutableStateOf(isHindi) }
+    var isSyncingToCloud by remember { mutableStateOf(false) }
 
     if (product == null) {
         Box(
@@ -396,6 +399,49 @@ fun ProductDetailScreen(
                             )
                         )
                     }
+                }
+            }
+
+            // Supabase Cloud Sync Action
+            item {
+                OutlinedButton(
+                    onClick = {
+                        isSyncingToCloud = true
+                        viewModel.syncExistingProductToCloud(product) { success, err ->
+                            isSyncingToCloud = false
+                            val msg = if (success) {
+                                if (displayLanguageIsHindi) "सुपबेस क्लाउड पर सफलतापूर्वक सिंक हो गया!" else "Synced to Supabase Cloud successfully!"
+                            } else {
+                                "Sync error: " + (err ?: "Check connection")
+                            }
+                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    enabled = !isSyncingToCloud,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                        .testTag("detail_cloud_sync_button"),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, CraftGreen),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = CraftGreen)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CloudUpload,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = CraftGreen
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (isSyncingToCloud) {
+                            if (displayLanguageIsHindi) "क्लाउड पर अपलोड हो रहा है..." else "Syncing to Supabase..."
+                        } else {
+                            if (displayLanguageIsHindi) "Supabase क्लाउड पर सिंक करें" else "Sync to Supabase Cloud"
+                        },
+                        fontWeight = FontWeight.Bold,
+                        color = CraftGreen
+                    )
                 }
             }
 

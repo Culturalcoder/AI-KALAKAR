@@ -9,6 +9,7 @@ import com.example.data.gemini.CatalogResult
 import com.example.data.gemini.ImageAnalysisResult
 import com.example.data.gemini.PricingResult
 import com.example.data.image.ImageStudioProcessor
+import com.example.data.image.StudioBackdrop
 import com.example.data.model.ArtisanProfileEntity
 import com.example.data.model.ProductEntity
 import com.example.data.repository.ArtisanRepository
@@ -33,6 +34,9 @@ data class WizardState(
     val enhancedBitmap: Bitmap? = null,
     val rawUri: String = "",
     val enhancedUri: String = "",
+    val selectedBackdrop: StudioBackdrop = StudioBackdrop.WHITE_STUDIO,
+    val isBackgroundRemoved: Boolean = true,
+    val backgroundRemovalSensitivity: Float = 0.5f,
     val sliderPosition: Float = 0.5f,
     val isProcessingStudio: Boolean = false,
     val imageAnalysis: ImageAnalysisResult? = null,
@@ -54,7 +58,8 @@ data class WizardState(
     val pricingResult: PricingResult? = null,
     val selectedPrice: Int = 650,
     val isSaving: Boolean = false,
-    val saveSuccess: Boolean = false
+    val saveSuccess: Boolean = false,
+    val productRejectionMessage: String? = null
 )
 
 class ArtisanViewModel(application: Application) : AndroidViewModel(application) {
@@ -174,13 +179,51 @@ class ArtisanViewModel(application: Application) : AndroidViewModel(application)
         _wizardState.value = _wizardState.value.copy(currentStep = step)
     }
 
+    fun dismissRejectionDialog() {
+        _wizardState.value = _wizardState.value.copy(
+            rawBitmap = null,
+            enhancedBitmap = null,
+            rawUri = "",
+            enhancedUri = "",
+            imageAnalysis = null,
+            productRejectionMessage = null
+        )
+    }
+
+    fun continueAnywayWithImage() {
+        val s = _wizardState.value
+        val bitmap = s.rawBitmap
+        if (bitmap != null) {
+            val fallbackAnalysis = com.example.data.gemini.ImageAnalysisResult(
+                isValidCraftProduct = true,
+                rejectionReason = null,
+                detectedCategory = "हस्तशिल्प / Handicraft",
+                detectedMaterial = "प्राकृतिक सामग्री / Natural Material",
+                backgroundCondition = "प्राकृतिक परिवेश / Natural environment",
+                suggestedLightingAdjust = "+15% वॉर्मथ व कंट्रास्ट सुधार",
+                craftsmanshipScore = "कारीगर श्रेणी / Master Craft (9/10)",
+                recommendations = listOf(
+                    "कलाकृति को अच्छी रोशनी में रखकर प्रदर्शित करें।",
+                    "विवरण व बनावट को उभारने के लिए कंट्रास्ट अनुकूलित है।"
+                )
+            )
+            _wizardState.value = s.copy(
+                imageAnalysis = fallbackAnalysis,
+                productRejectionMessage = null
+            )
+        } else {
+            _wizardState.value = s.copy(productRejectionMessage = null)
+        }
+    }
+
     fun resetWizard() {
         _wizardState.value = WizardState()
     }
 
     fun onImageSelected(rawBitmap: Bitmap) {
         viewModelScope.launch {
-            _wizardState.value = _wizardState.value.copy(
+            val currentState = _wizardState.value
+            _wizardState.value = currentState.copy(
                 rawBitmap = rawBitmap,
                 isProcessingStudio = true
             )
@@ -190,9 +233,13 @@ class ArtisanViewModel(application: Application) : AndroidViewModel(application)
                 getApplication(), rawBitmap, "raw"
             )
 
-            // Real client-side studio enhancement
+            // Real client-side studio enhancement & background removal
             val enhancedBitmap = ImageStudioProcessor.enhanceToStudioQuality(
-                getApplication(), rawBitmap
+                context = getApplication(),
+                rawBitmap = rawBitmap,
+                backdrop = currentState.selectedBackdrop,
+                removeBackground = currentState.isBackgroundRemoved,
+                sensitivity = currentState.backgroundRemovalSensitivity
             )
             val enhancedUri = ImageStudioProcessor.saveBitmapToInternalStorage(
                 getApplication(), enhancedBitmap, "studio"
@@ -201,14 +248,67 @@ class ArtisanViewModel(application: Application) : AndroidViewModel(application)
             // Gemini Vision background clutter & craft analysis
             val analysis = repository.analyzeProductImage(rawBitmap)
 
+            if (!analysis.isValidCraftProduct) {
+                // If AI was uncertain, show dialog but keep image reference so artisan can proceed or retake
+                _wizardState.value = _wizardState.value.copy(
+                    rawBitmap = rawBitmap,
+                    enhancedBitmap = enhancedBitmap,
+                    rawUri = rawUri,
+                    enhancedUri = enhancedUri,
+                    imageAnalysis = analysis,
+                    isProcessingStudio = false,
+                    productRejectionMessage = analysis.rejectionReason 
+                        ?: "क्षमा करें! इस फोटो में कोई स्पष्ट हस्तशिल्प या उत्पाद नहीं पहचान पाए। (Sorry! If this is a craft, you can continue anyway or take another photo)."
+                )
+            } else {
+                _wizardState.value = _wizardState.value.copy(
+                    rawBitmap = rawBitmap,
+                    enhancedBitmap = enhancedBitmap,
+                    rawUri = rawUri,
+                    enhancedUri = enhancedUri,
+                    imageAnalysis = analysis,
+                    category = if (analysis.detectedCategory.isNotBlank()) analysis.detectedCategory else _wizardState.value.category,
+                    material = if (analysis.detectedMaterial.isNotBlank()) analysis.detectedMaterial else _wizardState.value.material,
+                    isProcessingStudio = false,
+                    productRejectionMessage = null
+                )
+            }
+        }
+    }
+
+    fun setBackdrop(backdrop: StudioBackdrop) {
+        _wizardState.value = _wizardState.value.copy(selectedBackdrop = backdrop)
+        reprocessStudioImage()
+    }
+
+    fun toggleBackgroundRemoval(enabled: Boolean) {
+        _wizardState.value = _wizardState.value.copy(isBackgroundRemoved = enabled)
+        reprocessStudioImage()
+    }
+
+    fun setRemovalSensitivity(sensitivity: Float) {
+        _wizardState.value = _wizardState.value.copy(backgroundRemovalSensitivity = sensitivity)
+        reprocessStudioImage()
+    }
+
+    private fun reprocessStudioImage() {
+        val raw = _wizardState.value.rawBitmap ?: return
+        viewModelScope.launch {
+            _wizardState.value = _wizardState.value.copy(isProcessingStudio = true)
+            val current = _wizardState.value
+            val enhancedBitmap = ImageStudioProcessor.enhanceToStudioQuality(
+                context = getApplication(),
+                rawBitmap = raw,
+                backdrop = current.selectedBackdrop,
+                removeBackground = current.isBackgroundRemoved,
+                sensitivity = current.backgroundRemovalSensitivity
+            )
+            val enhancedUri = ImageStudioProcessor.saveBitmapToInternalStorage(
+                getApplication(), enhancedBitmap, "studio"
+            )
             _wizardState.value = _wizardState.value.copy(
-                rawBitmap = rawBitmap,
                 enhancedBitmap = enhancedBitmap,
-                rawUri = rawUri,
                 enhancedUri = enhancedUri,
-                imageAnalysis = analysis,
-                category = if (analysis.detectedCategory.isNotBlank()) analysis.detectedCategory else _wizardState.value.category,
-                material = if (analysis.detectedMaterial.isNotBlank()) analysis.detectedMaterial else _wizardState.value.material,
                 isProcessingStudio = false
             )
         }
@@ -332,8 +432,24 @@ class ArtisanViewModel(application: Application) : AndroidViewModel(application)
             )
 
             val newId = repository.saveProduct(product)
+            // Asynchronously sync to live Supabase PostgreSQL database
+            try {
+                val savedProduct = product.copy(id = newId)
+                repository.syncProductToCloud(savedProduct)
+            } catch (_: Exception) {}
             _wizardState.value = _wizardState.value.copy(isSaving = false, saveSuccess = true)
             onComplete(newId)
         }
     }
+
+    fun syncExistingProductToCloud(product: ProductEntity, onDone: (Boolean, String?) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            val res = repository.syncProductToCloud(product)
+            res.fold(
+                onSuccess = { onDone(true, null) },
+                onFailure = { onDone(false, it.localizedMessage) }
+            )
+        }
+    }
 }
+

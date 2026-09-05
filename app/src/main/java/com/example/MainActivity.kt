@@ -15,28 +15,34 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.ui.screens.DashboardScreen
+import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.ProductDetailScreen
+import com.example.ui.screens.SplashScreen
 import com.example.ui.screens.WalkthroughScreen
 import com.example.ui.screens.WizardScreen
 import com.example.ui.theme.AIKalakarTheme
 import com.example.ui.theme.NaturalLinen
 import com.example.ui.viewmodel.ArtisanViewModel
-import com.example.ui.viewmodel.WizardStep
 
 object Routes {
+    const val ROUTE_SPLASH = "splash"
+    const val ROUTE_HOME = "home"
     const val ROUTE_DASHBOARD = "dashboard"
     const val ROUTE_WIZARD = "wizard"
     const val ROUTE_WALKTHROUGH = "walkthrough"
     const val ROUTE_DETAIL = "detail/{productId}"
+
     fun detailRoute(productId: Long) = "detail/$productId"
 }
 
 class MainActivity : ComponentActivity() {
+
     private val viewModel: ArtisanViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
         setContent {
             AIKalakarTheme {
                 Surface(
@@ -56,8 +62,26 @@ fun AIKalakarApp(viewModel: ArtisanViewModel) {
 
     NavHost(
         navController = navController,
-        startDestination = Routes.ROUTE_DASHBOARD
+        startDestination = Routes.ROUTE_SPLASH
     ) {
+        composable(Routes.ROUTE_SPLASH) {
+            SplashScreen(
+                onSplashComplete = {
+                    navController.navigate(Routes.ROUTE_HOME) {
+                        popUpTo(Routes.ROUTE_SPLASH) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        composable(Routes.ROUTE_HOME) {
+            HomeScreen(
+                onNavigateToDashboard = {
+                    navController.navigate(Routes.ROUTE_DASHBOARD)
+                }
+            )
+        }
+
         composable(Routes.ROUTE_DASHBOARD) {
             DashboardScreen(
                 viewModel = viewModel,
@@ -112,4 +136,3 @@ fun AIKalakarApp(viewModel: ArtisanViewModel) {
         }
     }
 }
-
