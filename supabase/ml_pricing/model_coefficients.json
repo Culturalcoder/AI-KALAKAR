@@ -1,0 +1,39 @@
+{
+  "intercept": -9.2738,
+  "coefficients": {
+    "category_Bamboo & Cane Craft": -1.6624,
+    "category_Handloom & Sarees": -25.7416,
+    "category_Home Decor & Brassware": -0.8933,
+    "category_Jewellery & Brassware": -17.7296,
+    "category_Pottery & Terracotta": -0.9046,
+    "category_Textiles & Embroidery": 1.203,
+    "category_Woodcraft & Carvings": -4.0622,
+    "quality_Masterpiece": 0.7806,
+    "quality_Standard": -0.0092,
+    "rawMaterialCost": 0.0872,
+    "laborCost": 0.0841,
+    "packagingCost": 0.0986,
+    "otherCost": 0.1733,
+    "totalCost": 0.4431,
+    "competitorPrice": 0.1876,
+    "averageMarketPrice": 0.3146,
+    "demandScore": 0.3129
+  },
+  "categories": [
+    "Bags & Accessories",
+    "Bamboo & Cane Craft",
+    "Handloom & Sarees",
+    "Home Decor & Brassware",
+    "Jewellery & Brassware",
+    "Pottery & Terracotta",
+    "Textiles & Embroidery",
+    "Woodcraft & Carvings"
+  ],
+  "qualities": [
+    "Fine Heritage",
+    "Masterpiece",
+    "Standard"
+  ],
+  "r2": 0.9998,
+  "mae": 22.18
+}

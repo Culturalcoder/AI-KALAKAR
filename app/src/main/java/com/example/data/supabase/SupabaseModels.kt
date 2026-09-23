@@ -14,3 +14,15 @@ data class SupabaseProductResponse(
     val status: String,
     val createdAt: String?
 )
+
+data class PipelineEnhanceResponse(
+    val success: Boolean,
+    val category: String? = null,
+    val enhancedImageUrl: String? = null,
+    val rawImageUrl: String? = null,
+    val confidence: Double? = null,
+    val rejectionReason: String? = null,
+    val photoId: String? = null,
+    val flaggedForReview: Boolean? = null
+)
+

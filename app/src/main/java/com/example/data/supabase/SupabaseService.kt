@@ -161,4 +161,123 @@ class SupabaseService(
             Result.failure(e)
         }
     }
+
+    /**
+     * Uploads a raw camera photo to Supabase Storage 'raw-uploads' bucket.
+     */
+    suspend fun uploadRawImageToStorage(
+        imageBytes: ByteArray,
+        filename: String,
+        contentType: String = "image/jpeg"
+    ): Result<String> = withContext(Dispatchers.IO) {
+        if (!SupabaseConfig.isConfigured) {
+            return@withContext Result.failure(Exception("Supabase is not configured."))
+        }
+
+        try {
+            val url = "${SupabaseConfig.supabaseUrl.trimEnd('/')}/storage/v1/object/raw-uploads/$filename"
+
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", SupabaseConfig.supabaseAnonKey)
+                .addHeader("Authorization", "Bearer ${SupabaseConfig.supabaseAnonKey}")
+                .addHeader("Content-Type", contentType)
+                .addHeader("x-upsert", "true")
+                .post(imageBytes.toRequestBody(contentType.toMediaType()))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                val bodyStr = response.body?.string().orEmpty()
+                if (response.isSuccessful) {
+                    Result.success(filename)
+                } else {
+                    Result.failure(Exception("Upload failed HTTP ${response.code}: $bodyStr"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Triggers the 6-stage AI Image Enhancer & Studio pipeline Supabase Edge Function.
+     */
+    suspend fun triggerImageEnhancerPipeline(
+        imagePath: String,
+        override: Boolean = false,
+        backdrop: String = "white"
+    ): Result<PipelineEnhanceResponse> = withContext(Dispatchers.IO) {
+        if (!SupabaseConfig.isConfigured) {
+            return@withContext Result.failure(Exception("Supabase is not configured."))
+        }
+
+        try {
+            val url = "${SupabaseConfig.supabaseUrl.trimEnd('/')}/functions/v1/image-enhancer-pipeline"
+
+            val payload = JSONObject().apply {
+                put("image_path", imagePath)
+                put("override", override)
+                put("backdrop", backdrop)
+            }
+
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("apikey", SupabaseConfig.supabaseAnonKey)
+                .addHeader("Authorization", "Bearer ${SupabaseConfig.supabaseAnonKey}")
+                .addHeader("Content-Type", "application/json")
+                .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                val bodyStr = response.body?.string().orEmpty()
+                val json = if (bodyStr.isNotBlank()) JSONObject(bodyStr) else JSONObject()
+
+                val success = json.optBoolean("success", response.isSuccessful)
+                val category = json.optString("category", null)
+                val enhancedImageUrl = json.optString("enhancedImageUrl", null)
+                val rawImageUrl = json.optString("rawImageUrl", null)
+                val confidence = if (json.has("confidence")) json.optDouble("confidence") else null
+                val rejectionReason = json.optString("rejectionReason", null)
+                val photoId = json.optString("photoId", null)
+                val flaggedForReview = json.optBoolean("flaggedForReview", false)
+
+                val resultObj = PipelineEnhanceResponse(
+                    success = success,
+                    category = category,
+                    enhancedImageUrl = enhancedImageUrl,
+                    rawImageUrl = rawImageUrl,
+                    confidence = confidence,
+                    rejectionReason = rejectionReason,
+                    photoId = photoId,
+                    flaggedForReview = flaggedForReview
+                )
+
+                if (response.isSuccessful && success) {
+                    Result.success(resultObj)
+                } else {
+                    Result.success(resultObj) // Return structured response with rejectionReason intact
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Complete helper: uploads photo to raw-uploads bucket and invokes the studio pipeline.
+     */
+    suspend fun enhanceArtisanPhoto(
+        imageBytes: ByteArray,
+        filename: String,
+        override: Boolean = false,
+        backdrop: String = "white"
+    ): Result<PipelineEnhanceResponse> {
+        val uploadResult = uploadRawImageToStorage(imageBytes, filename)
+        if (uploadResult.isFailure) {
+            return Result.failure(uploadResult.exceptionOrNull() ?: Exception("Storage upload error"))
+        }
+        val path = uploadResult.getOrThrow()
+        return triggerImageEnhancerPipeline(path, override, backdrop)
+    }
 }
+

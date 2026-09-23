@@ -190,32 +190,6 @@ class ArtisanViewModel(application: Application) : AndroidViewModel(application)
         )
     }
 
-    fun continueAnywayWithImage() {
-        val s = _wizardState.value
-        val bitmap = s.rawBitmap
-        if (bitmap != null) {
-            val fallbackAnalysis = com.example.data.gemini.ImageAnalysisResult(
-                isValidCraftProduct = true,
-                rejectionReason = null,
-                detectedCategory = "हस्तशिल्प / Handicraft",
-                detectedMaterial = "प्राकृतिक सामग्री / Natural Material",
-                backgroundCondition = "प्राकृतिक परिवेश / Natural environment",
-                suggestedLightingAdjust = "+15% वॉर्मथ व कंट्रास्ट सुधार",
-                craftsmanshipScore = "कारीगर श्रेणी / Master Craft (9/10)",
-                recommendations = listOf(
-                    "कलाकृति को अच्छी रोशनी में रखकर प्रदर्शित करें।",
-                    "विवरण व बनावट को उभारने के लिए कंट्रास्ट अनुकूलित है।"
-                )
-            )
-            _wizardState.value = s.copy(
-                imageAnalysis = fallbackAnalysis,
-                productRejectionMessage = null
-            )
-        } else {
-            _wizardState.value = s.copy(productRejectionMessage = null)
-        }
-    }
-
     fun resetWizard() {
         _wizardState.value = WizardState()
     }
@@ -225,7 +199,8 @@ class ArtisanViewModel(application: Application) : AndroidViewModel(application)
             val currentState = _wizardState.value
             _wizardState.value = currentState.copy(
                 rawBitmap = rawBitmap,
-                isProcessingStudio = true
+                isProcessingStudio = true,
+                productRejectionMessage = null
             )
 
             // Save raw image
@@ -239,7 +214,8 @@ class ArtisanViewModel(application: Application) : AndroidViewModel(application)
                 rawBitmap = rawBitmap,
                 backdrop = currentState.selectedBackdrop,
                 removeBackground = currentState.isBackgroundRemoved,
-                sensitivity = currentState.backgroundRemovalSensitivity
+                sensitivity = currentState.backgroundRemovalSensitivity,
+                formatEcommerceSquare = true
             )
             val enhancedUri = ImageStudioProcessor.saveBitmapToInternalStorage(
                 getApplication(), enhancedBitmap, "studio"
@@ -249,16 +225,16 @@ class ArtisanViewModel(application: Application) : AndroidViewModel(application)
             val analysis = repository.analyzeProductImage(rawBitmap)
 
             if (!analysis.isValidCraftProduct) {
-                // If AI was uncertain, show dialog but keep image reference so artisan can proceed or retake
+                // Strictly Reject: clear bitmaps and URIs so non-craft item cannot proceed to catalog
                 _wizardState.value = _wizardState.value.copy(
-                    rawBitmap = rawBitmap,
-                    enhancedBitmap = enhancedBitmap,
-                    rawUri = rawUri,
-                    enhancedUri = enhancedUri,
+                    rawBitmap = null,
+                    enhancedBitmap = null,
+                    rawUri = "",
+                    enhancedUri = "",
                     imageAnalysis = analysis,
                     isProcessingStudio = false,
                     productRejectionMessage = analysis.rejectionReason 
-                        ?: "क्षमा करें! इस फोटो में कोई स्पष्ट हस्तशिल्प या उत्पाद नहीं पहचान पाए। (Sorry! If this is a craft, you can continue anyway or take another photo)."
+                        ?: "क्षमा करें! इस फोटो में कोई स्पष्ट हस्तशिल्प या कारीगर उत्पाद नहीं पहचान पाए। (Sorry! This does not appear to be an authentic handcrafted or artisan product)."
                 )
             } else {
                 _wizardState.value = _wizardState.value.copy(
@@ -301,7 +277,8 @@ class ArtisanViewModel(application: Application) : AndroidViewModel(application)
                 rawBitmap = raw,
                 backdrop = current.selectedBackdrop,
                 removeBackground = current.isBackgroundRemoved,
-                sensitivity = current.backgroundRemovalSensitivity
+                sensitivity = current.backgroundRemovalSensitivity,
+                formatEcommerceSquare = true
             )
             val enhancedUri = ImageStudioProcessor.saveBitmapToInternalStorage(
                 getApplication(), enhancedBitmap, "studio"

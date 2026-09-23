@@ -91,6 +91,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -206,36 +207,57 @@ fun WizardScreen(
         }
     }
 
-    // Rejection / Verification Dialog for product capture
+    // Rejection / Error Dialog for non-craft capture
     if (wizardState.productRejectionMessage != null) {
         AlertDialog(
             onDismissRequest = { viewModel.dismissRejectionDialog() },
             icon = {
-                Icon(
-                    imageVector = Icons.Default.Warning,
-                    contentDescription = null,
-                    tint = TurmericGold,
-                    modifier = Modifier.size(36.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(54.dp)
+                        .background(TerracottaContainer, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = TerracottaPrimary,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
             },
             title = {
                 Text(
-                    text = if (isHindi) "क्षमा करें! (हस्तशिल्प पुष्टि)" else "Sorry! Verify Craft Item",
+                    text = if (isHindi) "हस्तशिल्प उत्पाद नहीं है / अस्वीकृत" else "Non-Handicraft Detected",
                     fontWeight = FontWeight.Bold,
-                    color = DeepIndigo
+                    fontSize = 18.sp,
+                    color = DeepIndigo,
+                    textAlign = TextAlign.Center
                 )
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = wizardState.productRejectionMessage ?: "",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = CharcoalText
-                    )
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Surface(
+                        color = TerracottaContainer.copy(alpha = 0.4f),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = wizardState.productRejectionMessage ?: "",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                color = DeepIndigo
+                            ),
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
                     Text(
                         text = if (isHindi) 
-                            "यदि यह आपकी असली हस्तशिल्प कलाकृति है, तो आप 'जारी रखें' दबा सकते हैं या बेहतर रोशनी में दूसरी तस्वीर ले सकते हैं।"
-                            else "If this is your genuine handmade craft, you can tap 'Continue Anyway' or take another photo with better lighting.",
+                            "AI कलाकार विशेष रूप से भारतीय पारंपरिक कारीगरों, बुनकरों, हस्तशिल्पकारों और हस्तनिर्मित कलाकृतियों (जैसे वस्त्र, मिट्टी के बर्तन, कशीदाकारी, लकड़ी या धातु शिल्प) के लिए है। इलेक्ट्रॉनिक सामान, दीवार, व्यक्तिगत फोटो या गैर-शिल्प वस्तुएं स्वीकार्य नहीं हैं।"
+                            else "AI Kalakar is exclusively for traditional artisans, weavers, handloom textiles, pottery, and authentic handmade crafts. Electronics, blank walls, personal selfies, or general non-craft items are not permitted.",
                         style = MaterialTheme.typography.bodySmall,
                         color = CharcoalMuted
                     )
@@ -243,25 +265,50 @@ fun WizardScreen(
             },
             confirmButton = {
                 Button(
-                    onClick = { viewModel.continueAnywayWithImage() },
-                    colors = ButtonDefaults.buttonColors(containerColor = CraftGreen)
+                    onClick = {
+                        viewModel.dismissRejectionDialog()
+                        launchCamera()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = TerracottaPrimary),
+                    shape = RoundedCornerShape(10.dp)
                 ) {
-                    Text(if (isHindi) "यह हस्तशिल्प है, आगे बढ़ें" else "Continue Anyway")
+                    Icon(
+                        imageVector = Icons.Default.PhotoCamera,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(if (isHindi) "कैमरा से पुनः फोटो लें" else "Retake with Camera")
                 }
             },
             dismissButton = {
                 OutlinedButton(
-                    onClick = { viewModel.dismissRejectionDialog() },
-                    border = BorderStroke(1.dp, CraftBorder)
+                    onClick = {
+                        viewModel.dismissRejectionDialog()
+                        photoPickerLauncher.launch(
+                            androidx.activity.result.PickVisualMediaRequest(
+                                ActivityResultContracts.PickVisualMedia.ImageOnly
+                            )
+                        )
+                    },
+                    border = BorderStroke(1.dp, DeepIndigo),
+                    shape = RoundedCornerShape(10.dp)
                 ) {
+                    Icon(
+                        imageVector = Icons.Default.Collections,
+                        contentDescription = null,
+                        tint = DeepIndigo,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = if (isHindi) "पुनः फोटो लें" else "Take Another Photo",
-                        color = CharcoalText
+                        text = if (isHindi) "गैलरी से चुनें" else "Pick from Gallery",
+                        color = DeepIndigo
                     )
                 }
             },
             containerColor = LinenCard,
-            shape = RoundedCornerShape(16.dp)
+            shape = RoundedCornerShape(20.dp)
         )
     }
 
@@ -507,6 +554,38 @@ fun PhotoStudioStepView(
                     style = MaterialTheme.typography.bodyMedium,
                     color = CharcoalMuted
                 )
+            }
+        }
+
+        // E-Commerce 1:1 Standard Studio Badge
+        if (wizardState.enhancedBitmap != null) {
+            item {
+                Surface(
+                    color = CraftGreenContainer.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, CraftGreen.copy(alpha = 0.35f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = CraftGreen,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (isHindi) "ई-कॉमर्स 1:1 मानक: बैकग्राउंड हटाया गया, स्टूडियो लाइटिंग व कंट्रास्ट संतुलित"
+                            else "E-Commerce 1:1 Standard: Clutter removed, studio lighting & centering formatted",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = CraftGreen
+                        )
+                    }
+                }
             }
         }
 
@@ -869,7 +948,7 @@ fun PhotoStudioStepView(
             Spacer(modifier = Modifier.height(8.dp))
             Button(
                 onClick = onNext,
-                enabled = wizardState.rawBitmap != null,
+                enabled = wizardState.rawBitmap != null && wizardState.productRejectionMessage == null && !wizardState.isProcessingStudio,
                 colors = ButtonDefaults.buttonColors(containerColor = DeepIndigo),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier

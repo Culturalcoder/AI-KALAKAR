@@ -1,4 +1,6 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import java.util.Properties
+import java.io.FileInputStream
 
 plugins {
   alias(libs.plugins.android.application)
@@ -21,6 +23,15 @@ android {
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    val localPropertiesFile = rootProject.file("local.properties")
+    val geminiKey = if (localPropertiesFile.exists()) {
+      val p = Properties()
+      FileInputStream(localPropertiesFile).use { s -> p.load(s) }
+      p.getProperty("GEMINI_API_KEY") ?: "AQ.Ab8RN6L_S_fDO57ZMsBbVQ4ZzqqNWSHTc6AEUody9yhDqgM8DA"
+    } else {
+      "AQ.Ab8RN6L_S_fDO57ZMsBbVQ4ZzqqNWSHTc6AEUody9yhDqgM8DA"
+    }
+    buildConfigField("String", "GEMINI_API_KEY", "\"$geminiKey\"")
   }
 
   signingConfigs {
